@@ -487,6 +487,7 @@ footer b{color:#fff}
       <button class="tab" data-pane="pSite">🎨 الموقع</button>
       <button class="tab" data-pane="pCon">📞 التواصل</button>
       <button class="tab" data-pane="pPay">💳 الدفع</button>
+      <button class="tab" data-pane="pBot">🔔 إشعارات البوت</button>
     </div>
 
     <!-- الطلبات -->
@@ -564,6 +565,36 @@ footer b{color:#fff}
         <button class="btn primary full" id="savePay">💾 حفظ التغييرات</button>
       </div>
     </div>
+
+    <!-- إشعارات البوت -->
+    <div class="pane" id="pBot">
+      <div class="sec rgb-border">
+        <h3>🔔 إشعارات تليجرام</h3>
+        <p class="sub">يصلك إشعار فوري بكل طلب جديد + صورة وصل الدفع</p>
+        <div class="fld">
+          <label>توكن البوت (من @BotFather)</label>
+          <input id="bTok" dir="ltr" placeholder="123456789:AAE...">
+        </div>
+        <div class="fld">
+          <label>معرّف الدردشة Chat ID</label>
+          <div class="row">
+            <input id="bChat" dir="ltr" placeholder="مثال: 123456789">
+            <button class="btn sm ghost" id="bGet" style="max-width:130px">جلب تلقائياً</button>
+          </div>
+          <div class="hint">أرسل كلمة <b>/start</b> لبوتك من حسابك ثم اضغط «جلب تلقائياً»</div>
+        </div>
+        <div class="itm" style="margin:12px 0 8px">
+          <div class="ic">🔔</div><div class="nm">تشغيل الإشعارات</div>
+          <input type="checkbox" id="bOn" style="width:22px;height:22px;flex:0 0 auto">
+        </div>
+        <div class="itm">
+          <div class="ic">🖼️</div><div class="nm">إرسال الصور والوصل</div>
+          <input type="checkbox" id="bPh" style="width:22px;height:22px;flex:0 0 auto">
+        </div>
+        <button class="btn primary full" style="margin-top:12px" id="saveBot">💾 حفظ التغييرات</button>
+        <button class="btn ghost full" style="margin-top:8px" id="testBot">📤 إرسال إشعار تجريبي</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -609,6 +640,8 @@ const DEF = {
   payNum: "7119035694",
   payNote: "امسح الباركود أو حوّل على الرقم أعلاه، ثم أرفق صورة وصل الدفع لتأكيد الطلب.",
   qr: "",
+  tgBot: "8696797426:AAEvH5b0LzYYR0AptXKxvCCmJnIIMY3Srbo",   // بوت @jdjehehhe377_bot
+  tgChat: "5055093444", tgOn: true, tgPhotos: true,        // حساب @Design20002
   cats: [
     { id: "c1", icon: "👶", name: "مولود",       price: "" },
     { id: "c2", icon: "💍", name: "زفاف",        price: "" },
@@ -656,6 +689,61 @@ function shrink(file, maxPx = 1100, maxKB = 620) {
     };
     fr.readAsDataURL(file);
   });
+}
+
+/* ================= إشعارات بوت تليجرام ================= */
+const TG_API = t => `https://api.telegram.org/bot${t}/`;
+const dataToBlob = d => {
+  const [h, b] = d.split(","), m = (h.match(/:(.*?);/) || [, "image/jpeg"])[1];
+  const bin = atob(b), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type: m });
+};
+async function tgCall(method, body, ms = 12000) {
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+  try {
+    const r = await fetch(TG_API(S.tgBot) + method, { method: "POST", body, signal: c.signal });
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function tgText(text) {
+  return tgCall("sendMessage", new URLSearchParams({
+    chat_id: S.tgChat, text, parse_mode: "HTML", disable_web_page_preview: "true"
+  }));
+}
+async function tgPhoto(dataUrl, caption = "") {
+  const fd = new FormData();
+  fd.append("chat_id", S.tgChat);
+  fd.append("caption", caption.slice(0, 900));
+  fd.append("photo", dataToBlob(dataUrl), "img.jpg");
+  return tgCall("sendPhoto", fd, 25000);
+}
+/* إشعار الطلب الجديد */
+async function notifyOrder(o, pics, rec) {
+  if (!S.tgOn || !S.tgBot || !S.tgChat) return;
+  const e = esc, L = [];
+  L.push(`🔔 <b>طلب جديد</b> — <code>${e(o.code)}</code>`);
+  L.push("━━━━━━━━━━━━━━━");
+  L.push(`🎉 <b>المناسبة:</b> ${e(o.occasion)}`);
+  if (o.price) L.push(`💰 <b>السعر:</b> ${e(o.price)}`);
+  L.push(`📝 <b>الأسماء:</b> ${e(o.names)}`);
+  if (o.date || o.time) L.push(`📅 <b>الموعد:</b> ${e([o.date, o.time].filter(Boolean).join(" - "))}`);
+  if (o.place) L.push(`📍 <b>المكان:</b> ${e(o.place)}`);
+  L.push(`🖼️ <b>النموذج:</b> ${e(o.src)}${o.model ? " — رقم " + e(o.model) : ""}`);
+  if (o.details) L.push(`🧾 <b>التفاصيل:</b> ${e(o.details)}`);
+  L.push("━━━━━━━━━━━━━━━");
+  L.push(`👤 <b>العميل:</b> ${e(o.cName)}`);
+  L.push(`📞 <b>الهاتف:</b> <code>${e(o.cPhone)}</code>`);
+  if (o.cTg) L.push(`✈️ <b>تليجرام:</b> @${e(o.cTg.replace(/^@/, ""))}`);
+  L.push(`💳 <b>الدفع:</b> ${e(o.payMethod)}${o.payNote ? " — " + e(o.payNote) : ""}`);
+  L.push(`🕒 ${new Date().toLocaleString("ar-IQ-u-nu-latn")}`);
+  try {
+    await tgText(L.join("\n"));
+    if (S.tgPhotos) {
+      for (let i = 0; i < pics.length; i++) await tgPhoto(pics[i], `${o.code} — مرفق ${i + 1}`).catch(() => {});
+      if (rec) await tgPhoto(rec, `${o.code} — 🧾 وصل الدفع`).catch(() => {});
+    }
+  } catch (err) { console.warn("telegram:", err); }
 }
 
 /* ================= خلفية النجوم ================= */
@@ -939,7 +1027,7 @@ async function submit() {
     const r2 = await addDoc(FIL, { code, kind: "وصل الدفع", data: O.rec, ts: Date.now() });
     imgs.push({ id: r2.id, kind: "وصل الدفع" });
 
-    await addDoc(ORD, {
+    const payload = {
       code,
       occasion: other ? $("#otherCat").value.trim() : (c.name || ""),
       catIcon: c.icon || "✨",
@@ -956,7 +1044,14 @@ async function submit() {
       payMethod: $("#fPay").value,
       payNote: $("#fPayNote").value.trim(),
       imgs, status: "new", ts: Date.now(), createdAt: serverTimestamp()
-    });
+    };
+    await addDoc(ORD, payload);
+
+    // إشعار البوت
+    if (S.tgOn && S.tgBot && S.tgChat) {
+      b.innerHTML = '<span class="spin"></span> جاري إرسال الإشعار...';
+      await notifyOrder(payload, O.pics, O.rec).catch(() => {});
+    }
 
     $("#doneCode").textContent = code;
     $("#formArea").classList.add("hidden");
@@ -1097,6 +1192,8 @@ function fillAdminForms() {
   set("sName", S.siteName); set("sTag", S.siteTag); set("sWTitle", S.wTitle); set("sWSub", S.wSub);
   set("cTg", S.tg); set("cIg", S.ig); set("cWa", S.wa); set("cPh", S.ph);
   set("pName2", S.payName); set("pNum2", S.payNum); set("pNote2", S.payNote);
+  set("bTok", S.tgBot); set("bChat", S.tgChat);
+  $("#bOn").checked = !!S.tgOn; $("#bPh").checked = S.tgPhotos !== false;
   $("#qrTh").innerHTML = `<div class="th"><img src="${S.qr || $("#payQr").src}"></div>`;
   drawCatAdmin();
 }
@@ -1120,6 +1217,45 @@ $("#qrIn").onchange = async e => {
   try { const d = await shrink(f, 700, 500); $("#qrTh").innerHTML = `<div class="th"><img src="${d}"></div>`; await save({ qr: d }, "تم تحديث الباركود ✓"); }
   catch { toast("تعذر رفع الصورة", "err"); }
   e.target.value = "";
+};
+
+/* ---- إشعارات البوت ---- */
+$("#saveBot").onclick = () => save({
+  tgBot: $("#bTok").value.trim(),
+  tgChat: $("#bChat").value.trim(),
+  tgOn: $("#bOn").checked,
+  tgPhotos: $("#bPh").checked
+}, "تم حفظ إعدادات البوت ✓");
+
+$("#bGet").onclick = async () => {
+  const tok = $("#bTok").value.trim();
+  if (!tok) return toast("ضع توكن البوت أولاً", "err");
+  const btn = $("#bGet"); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await fetch(TG_API(tok) + "getUpdates?limit=10");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.description || "توكن غير صحيح");
+    const ids = (j.result || []).map(u => (u.message || u.channel_post || {}).chat).filter(Boolean);
+    if (!ids.length) return toast("أرسل /start لبوتك من حسابك ثم أعد المحاولة", "err");
+    const c = ids[ids.length - 1];
+    $("#bChat").value = c.id;
+    toast("تم جلب المعرّف: " + (c.first_name || c.title || c.id), "ok");
+  } catch (e) { toast("فشل الجلب: " + e.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "جلب تلقائياً"; }
+};
+
+$("#testBot").onclick = async () => {
+  const btn = $("#testBot");
+  const bak = { ...S };
+  S = { ...S, tgBot: $("#bTok").value.trim(), tgChat: $("#bChat").value.trim() };
+  if (!S.tgBot || !S.tgChat) { S = bak; return toast("أكمل التوكن والمعرّف", "err"); }
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> جاري الإرسال...';
+  try {
+    const j = await tgText(`✅ <b>تجربة ناجحة</b>\nبوت إشعارات <b>${esc(S.siteName)}</b> جاهز.\n🕒 ${new Date().toLocaleString("ar-IQ-u-nu-latn")}`);
+    if (j && j.ok) toast("وصل الإشعار التجريبي ✓ راجع تليجرام", "ok");
+    else toast("فشل: " + ((j && j.description) || "تحقق من التوكن والمعرّف"), "err");
+  } catch (e) { toast("فشل الإرسال: تحقق من الإنترنت/التوكن", "err"); }
+  finally { btn.disabled = false; btn.textContent = "📤 إرسال إشعار تجريبي"; S = bak; }
 };
 
 /* ---- الأقسام والأسعار ---- */
